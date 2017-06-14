@@ -2,9 +2,7 @@ module Rayden
 
 import Base:intersect!, ⋅
 
-export Vec, Ray, Hit, Sphere, Ellipsoid, Dome, intersect!, Interface, rotate!
-
-#const FWHM = 2*sqrt(2*log(2))
+export Vec, Ray, Hit, Sphere, Ellipsoid, Dome, intersect!, Interface, rotate!, Eye, scallop, trace!
 
 immutable Vec
     x::Float64
@@ -16,22 +14,19 @@ import Base: +, -, *, /
 -(a::Vec) = Vec(-a.x, -a.y, -a.z)
 -(a::Vec, b::Vec) = Vec(a.x-b.x, a.y-b.y, a.z-b.z)
 *(a::Float64, b::Vec) = Vec(a*b.x, a*b.y, a*b.z)
+*(a::Vec, b::Float64) = b*a
 *(a::Int, b::Vec) = Vec(a*b.x, a*b.y, a*b.z)
-*(a::Vec, b::Float64) = *(b,a)
+*(a::Vec, b::Int) = b*a
 /(a::Vec, b::Vec) = Vec(a.x/b.x, a.y/b.y, a.z/b.z)
+/(a::Vec, b::Float64) = Vec(a.x/b, a.y/b, a.z/b)
 ⋅(a::Vec, b::Vec) = (a.x*b.x + a.y*b.y + a.z*b.z)
 norm(a::Vec) = sqrt(a⋅a)
-unitize(a::Vec) = (1. / norm(a) * a)
+unitize(a::Vec) = a/norm(a)
 
 type Ray
     orig::Vec
     dir::Vec
-    Ray(o, d) = new(o, unitize(d))
-end
-
-type Hit
-    lambda::Float64
-    normal::Vec
+    Ray(o::Vec, d::Vec) = new(o, unitize(d))
 end
 
 abstract Round
@@ -40,7 +35,7 @@ immutable Sphere <: Round
     center::Vec
     radius::Float64
     radius2::Float64
-    Sphere(c, r) = new(c, r, r*r)
+    Sphere(c::Vec, r::Float64) = new(c, r, r*r)
 end
 
 function distance(s::Sphere, ray::Ray)
@@ -69,7 +64,7 @@ immutable Ellipsoid <: Round
     yfactor::Float64
     zfactor::Float64
     sphere::Sphere
-    function Ellipsoid(c, rx, ry, rz)
+    function Ellipsoid(c::Vec, rx::Float64, ry::Float64, rz::Float64)
         yf = rx/ry
         zf = rx/rz
         cc = Vec(c.x, yf*c.y, zf*c.z)
@@ -93,16 +88,11 @@ function distance(s::Ellipsoid, ray::Ray)
     return norm(ray.orig - Ellipsoidise(r.orig, s))
 end
 
-#=function intersect{R <: Round}(s::R, ray::Ray)
-    l = distance(s,  ray)
-    return advance(ray, l)
-end=#
-
 immutable Dome{R <: Round}
     round::R
     dir::Vec # the center (normalized) direction of the dome 
     open::Float64 # acos(α) where α is the opening angle of the dome
-    Dome(r, d, o) = new(r, unitize(d), o)
+    Dome(r::R, d::Vec, o::Float64) = new(r, unitize(d), o)
 end
 Dome{R <: Round}(r::R, d::Vec, o::Float64) = Dome{R}(r, d, o)
 
@@ -120,15 +110,18 @@ end
 
 immutable Interface{R <: Round}
     dome::Dome{R}
-    inout::Int
+    into::Bool
     n::Float64
     n2::Float64
-    Interface(d, io, n) = new(d, io, n, n*n)
+    Interface(d::Dome{R}, i::Bool, n::Float64) = new(d, i, n, n^2)
 end
-Interface{R <: Round}(d::Dome{R}, i::Int, n::Float64) = Interface{R}(d, i, n)
+Interface{R <: Round}(d::Dome{R}, i::Bool, n::Float64) = Interface{R}(d, i, n)
 
-normal(i::Interface{Sphere}, ray::Ray) = i.inout*unitize(ray.orig - i.dome.round.center)
-normal(i::Interface{Ellipsoid}, ray::Ray) = i.inout*unitize((ray.orig - i.dome.round.center)/Vec(i.dome.round.radiusx2, i.dome.round.radiusy2, i.dome.round.radiusz2))
+intersect!(i::Interface, ray::Ray) = intersect!(i.dome, ray)
+
+
+normal(i::Interface{Sphere}, ray::Ray) = unitize(ray.orig - i.dome.round.center)*(-1)^i.into
+normal(i::Interface{Ellipsoid}, ray::Ray) = unitize((ray.orig - i.dome.round.center)/Vec(i.dome.round.radiusx2, i.dome.round.radiusy2, i.dome.round.radiusz2))*(-1)^i.into
 
 function rotate!(i::Interface, ray::Ray)
     N = normal(i, ray)
@@ -141,6 +134,52 @@ function rotate!(i::Interface, ray::Ray)
         ray.dir = unitize(ray.dir + 2a*N)
     end
 end
+
+function trace!(ints::Vector{Interface}, ray::Ray)
+    for i in ints
+        intersect!(i, ray)
+        if i.n != 1
+            rotate!(i, ray)
+        end
+    end
+end
+
+
+
+# Scallops
+
+Dome(c::Vec, radius::Float64, dir::Float64, open::Float64) = Dome(Sphere(c, radius), Vec(0., 0., dir), open)
+
+Dome(c::Vec, radii::Vector{Float64}, dir::Float64, open::Float64) = Dome(Ellipsoid(c, radii...), Vec(0., 0., dir), open)
+
+immutable Eye
+    interfaces::Vector{Interface}
+end
+
+function scallop(;water_ri = 1.34, cornea_radii = [78., 78.,39.], cornea_ri = 1.37, lens_distal_radii = [63.], lens_ri = 1.42, lens_proximal_radii = [337.], aqueous_humor_ri = 1.35, distal_retina_radii = [337.], proximal_retina_distal_radii = [337.], proximal_retina_ri = 1.35, proximal_retina_proximal_radii = [337.], mirror_radii = [417.], mirror_ri = Inf, cornea_distal_lens_thickness = 23., distal_lens_proximal_lens_thickness = 215., proximal_lens_distal_retina_thickness = 6., distal_retina_proximal_retina_thickness = 81., proximal_retina_thickness = 15., proximal_retina_mirror_thickness = 49.)
+
+    zs = -[0.0, cornea_distal_lens_thickness, distal_lens_proximal_lens_thickness, proximal_lens_distal_retina_thickness, distal_retina_proximal_retina_thickness, proximal_retina_thickness, proximal_retina_mirror_thickness]
+    zs = cumsum(zs)
+    rs = [cornea_radii, lens_distal_radii, lens_proximal_radii, distal_retina_radii, proximal_retina_distal_radii, proximal_retina_proximal_radii, mirror_radii]
+    rs = [length(r) == 1 ? r[1] : r for r in rs]
+    flips = [1., 1., -1., -1., -1., -1., -1.]
+
+    domes = [Dome(Vec(0., 0., z), r, flip, pi/2) for (z, r, flip) in zip(zs, rs, flips)]
+
+    intos = [flips .== 1; true; true; true]
+    ris = [water_ri, cornea_ri, lens_ri, aqueous_humor_ri, aqueous_humor_ri, proximal_retina_ri, aqueous_humor_ri, mirror_ri, aqueous_humor_ri, proximal_retina_ri, aqueous_humor_ri]
+    ns = ris[1:end-1]./ris[2:end]
+
+    interfaces = [Interface(dome, into, n) for (dome, into, n) in zip(domes[[1:7;6:-1:4]], intos, ns)]
+
+    return interfaces
+end
+
+
+
+
+
+
 
 end # module
 #=
@@ -504,3 +543,5 @@ zs = [pdf(p, [x, y]) for x in xs, y in ys]
         r = vec(sqrt(sum(xy.^2, 1)))
         std(r)
         =#
+#const FWHM = 2*sqrt(2*log(2))
+
