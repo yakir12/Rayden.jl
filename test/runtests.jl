@@ -25,4 +25,3 @@ ou = OpticUnit(s, false, 1., true, "a")
 a = raytrace!(r, ou)
 @test norm(s.center(r.orig)) ≈ s.r[3]
 @test dir_org ≈ r.dir
-
