@@ -69,7 +69,7 @@ function advance!(r::Ray, s::Ellipsoid)::Bool
             end
         end
     end
-    return false
+    return true
 end
 
 struct Interface

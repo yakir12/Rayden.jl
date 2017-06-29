@@ -10,7 +10,7 @@ a = advance!(r, s)
 
 r = Ray(Vec(1, 2, 10), Vec(0, 0, 1))
 a = advance!(r, s)
-@test !a
+@test a
 
 r = Ray(Vec(1, 2, 10), Vec(0, 0, -1))
 s = Ellipsoid(Vec(1, 2, 2), Vec(5, 4, 2), Vec(0, 0, -1), cosd(90))
