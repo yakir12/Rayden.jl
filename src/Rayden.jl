@@ -84,10 +84,10 @@ end
 """
     advance!(r::Ray, s::Ellipsoid)
 
-Find the shortest point of intersection that is within the ellipsoid's dome and reasign the origin of the ray. Returns faliure of the intersection.
+Find the shortest point of intersection that is within the ellipsoid's dome and reassign the origin of the ray. Returns failure of the intersection.
 """
 function advance!(r::Ray, s::Ellipsoid)::Bool
-    # move the ray's origin to the intersection point that is within the ellipsoid's dome, and return failiure
+    # move the ray's origin to the intersection point that is within the ellipsoid's dome, and return failure
     orig = s.center_scale(r.orig) # transform the ray's origin according to the ellipsoid
     dir = normalize(s.scale(r.dir)) # scale the ray's direction as well
     ls = distance(orig, dir)
@@ -133,7 +133,7 @@ end
 """
     OpticUnit(body::Ellipsoid, pointin::Bool, n::Float64, register::Bool, name::String)
 
-Conviniency function to build optical units. Build an optical unit depending on if the normal should be pointing in or out, `pointin`. The correct AffineMap transformation will be automatically calculated.
+Convenience function to build optical units. Build an optical unit depending on if the normal should be pointing in or out, `pointin`. The correct AffineMap transformation will be automatically calculated.
 """
 function OpticUnit(body::Ellipsoid, pointin::Bool, n::Float64, register::Bool, name::String)
     i = Float64((-1)^pointin)
@@ -164,7 +164,7 @@ end
 """
     raytrace!(r::Ray, c::OpticUnit)
 
-Advanvce a ray to the intersection point with an ellipsoid, and if the intersection was succesful, bend the ray.
+Advance a ray to the intersection point with an ellipsoid. If the intersection was successful, bend the ray. Updates the ray accordingly. Returns intersection failure.
 """
 raytrace!(r::Ray, c::OpticUnit) = advance!(r, c.body) || bend!(r, c.interface)
 
